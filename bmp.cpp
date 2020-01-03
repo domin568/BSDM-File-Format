@@ -5,6 +5,7 @@
 #include <math.h>
 #include <map>
 #include <vector>
+#include <inttypes.h>
 
 struct BITMAPFILEHEADER
 {
@@ -17,9 +18,9 @@ struct BITMAPFILEHEADER
 
 struct BITMAPINFOHEADER
 {
-    unsigned int bfSize;
+    unsigned int biSize;
     unsigned int biWidth;
-    unsigned int biHeight;
+    int biHeight;
     unsigned short biPlanes;
     unsigned short biBitCount;
     unsigned int biCompression;
@@ -38,17 +39,15 @@ struct COLORPALETTE
     
 }__attribute__((packed));
 
-
-struct bsdm_header 
+struct BSDMHEADER 
 {
-    unsigned char magic [4];
+    uint32_t magic;
     uint32_t width;
     uint32_t height;
     uint8_t bitsPerPixel;
-    uint8_t mode;
-    uint32_t nColors;
-    uint8_t isCustomPalette;
-    uint32_t sizeOfHeader;
+    uint8_t mode;            // color, grayscale       
+    uint8_t isCustomPalette; // true,false
+    uint32_t sizeOfHeader;   // 0x13
 }__attribute__((packed));
 
 template <typename T>
@@ -57,6 +56,8 @@ struct bsdm_palette_entry
 
 };
 
+// TODOOOOOOOOOOOOOOOOOOOOOOOOO
+/*
 uint8_t lzw_encode (uint8_t * data, uint32_t size)
 {
     std::map <uint32_t,uint8_t *> m;
@@ -72,14 +73,7 @@ uint8_t lzw_encode (uint8_t * data, uint32_t size)
     }
     return 0;
 }
-struct color
-{
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-    
-}__attribute__((packed));
-
+*/
 template<typename T>
 bool readHelper (FILE * file , T * data)
 {
@@ -102,7 +96,7 @@ int readBMPHeaders (FILE * bmpFile, BITMAPFILEHEADER & fileHeader, BITMAPINFOHEA
         return 1;
     }
     
-    if (!(readHelper(bmpFile,&infoHeader.bfSize) &&
+    if (!(readHelper(bmpFile,&infoHeader.biSize) &&
           readHelper(bmpFile, &infoHeader.biWidth)&&
           readHelper(bmpFile, &infoHeader.biHeight) &&
           readHelper(bmpFile, &infoHeader.biPlanes) &&
@@ -120,12 +114,32 @@ int readBMPHeaders (FILE * bmpFile, BITMAPFILEHEADER & fileHeader, BITMAPINFOHEA
     }
     return 0;
 }
-void readRawBMPData (FILE * bmpFile, uint8_t * data, BITMAPFILEHEADER & fileHeader, BITMAPINFOHEADER & infoHeader)
+bool readBSDMHeader (FILE * bsdmFile, BSDMHEADER & header)
+{
+    if (!(readHelper(bsdmFile, &header.magic) &&
+          readHelper(bsdmFile, &header.width)&&
+          readHelper(bsdmFile, &header.height) &&
+          readHelper(bsdmFile, &header.bitsPerPixel) &&
+          readHelper(bsdmFile, &header.mode) &&
+          readHelper(bsdmFile, &header.isCustomPalette) &&
+          readHelper(bsdmFile, &header.sizeOfHeader)))
+    {
+        std::cout << "[!] Failed to parse fileHeader" << std::endl;
+        return 1;
+    }
+    if (header.magic != 0x4D445342)
+    {
+        return 1;
+    }
+    return 0;
+}
+uint8_t * readRawBMPData (FILE * bmpFile, const BITMAPFILEHEADER & fileHeader, const BITMAPINFOHEADER & infoHeader)
 {
     int pitch = (infoHeader.biWidth*3 + 3) & ~3U;
 
     fseek(bmpFile,fileHeader.bfOffBits,0);
     uint32_t rawDataSize = pitch * infoHeader.biHeight;
+    uint8_t * data = new uint8_t [rawDataSize];    
 
     uint8_t * line = new uint8_t [pitch];
     uint8_t tmp;
@@ -141,96 +155,184 @@ void readRawBMPData (FILE * bmpFile, uint8_t * data, BITMAPFILEHEADER & fileHead
             line[j+2] = tmp;
         }
 
-        memcpy (data+offset,line,pitch);
+        memcpy (data+offset,line,pitch);   
         offset -= pitch;
     }
+    return data;
 }
-int main(int argc, const char * argv[])
+uint8_t * readRawBSDMData (FILE * bsdmFile, const BSDMHEADER & header)
 {
-    BITMAPFILEHEADER fileHeader;
-    BITMAPINFOHEADER infoHeader;
-
-    FILE * fBMP = fopen(argv[1], "rb");
-    uint8_t * rawBitmapData;
+    fseek(bsdmFile,header.sizeOfHeader,0);
+    uint32_t rawDataSize = header.width * header.height;
+    uint8_t * data = new uint8_t [rawDataSize];    
+    fread(data, 1, rawDataSize, bsdmFile);
+    return data;
+}
+void transcodePixels5bits (const uint8_t * src, uint8_t * dst, bool direction, const BITMAPINFOHEADER & infoHeader)
+{
+    // direction == 0 --> BMP to BSDM
+    // direction == 1 --> BSDM to BMP
     
-    if (readBMPHeaders(fBMP,fileHeader,infoHeader))
+    if (direction == 0)
     {
-        return 1;
-    }
-
-    readRawBMPData (fBMP,rawBitmapData,fileHeader,infoHeader);    
-
-
-
-    
-    asm(".byte 0xcc");
-    
-
-    // headers
-
-    /*
-    
-    BITMAPFILEHEADER * fileHeader = (BITMAPFILEHEADER *)data;
-
-    BITMAPINFOHEADER * infoHeader = (BITMAPINFOHEADER *)(data + sizeof(BITMAPFILEHEADER));
-    
-    COLORPALETTE <16> * palette = (COLORPALETTE <16> *) (data + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER));
-    memset(palette, 0, 16);
-    
-    palette->colors[0] = 0x0000ff00;
-    palette->colors[1] = 0x00ee0000;
-    palette->colors[2] = 0xff000000;
-    
-    uint8_t * bitmapData = (uint8_t*)(palette + 1) ;
-    
-    int pitch = (WIDTH + 3) & ~3;
-    
-    int diff = WIDTH - pitch;
-    
-    for (int j = 0 ; j < HEIGHT;j++)
-    {
-        for (int i = 0 ; i < pitch/2;i++)
+        // assuming BMP is 24 bpp
+        // blue is least important color so using one bit less for this color
+        for (int i = 0; i < infoHeader.biSizeImage; i+=3)
         {
-            if (i >= WIDTH/2)
+            uint8_t r = src[i];
+            uint8_t g = src[i+1];
+            uint8_t b = src[i+2];
+
+            // 1
             {
-                bitmapData[i + j * 6] = (uint8_t)0;
-            }
-            else
-            {
-                bitmapData[i + j * 6] = (uint8_t)0x11;
+                r = r >> 6;
+                g = g >> 6;
+                b = b >> 7;
+                dst[i/3] = r << 3;
+                dst[i/3] = dst[i/3] | (g << 1);
+                dst[i/3] = dst[i/3] | b;
             }
         }
+        
     }
-    memset(fileHeader, 0, sizeof(*fileHeader));
-    
-    fileHeader->bfType = 0x424d; // magic
-    int sizeOfStructures = (sizeof(*fileHeader) + sizeof(*infoHeader));
-    fileHeader->bfOffBits = sizeOfStructures;
-    
-    memset(infoHeader, 0, sizeof(*infoHeader));
-    
-    infoHeader->bfSize = 40 ;
-    infoHeader->biWidth = WIDTH;
-    infoHeader->biHeight = HEIGHT;
-    infoHeader->biPlanes = 1;
-    infoHeader->biBitCount = BITPERPIXEL;
-    infoHeader->biCompression = 0;
-    infoHeader->biSizeImage = pitch * HEIGHT;
-    infoHeader->biXPelsPerMeter = 1;
-    infoHeader->biYPelsPerMeter = 1;
-    
-    
-    std::fstream file;
-    
-    file.open("file.bmp",std::ios::out);
-    
-    std::cout << "SIZE" << sizeOfStructures + sizeof(COLORPALETTE<16>) + pitch * HEIGHT /2 << std::endl;
-    
-    file.write((char *)data, sizeOfStructures + sizeof(COLORPALETTE<16>) + pitch * HEIGHT / 2 + 1);
-    
-    file.close();
+    else if (direction == 1)
+    {
 
-    */
+    }
+}
+void convertSaveBSDM (FILE * fBSDM, const BITMAPFILEHEADER & fileHeader, const BITMAPINFOHEADER & infoHeader, uint8_t * rawBMPBitmapData, int mode, bool isDedicatedPaletteUsed)
+{
+    BSDMHEADER bsdm_header;
+    memcpy(&bsdm_header,"BSDM",4);
+    bsdm_header.width = infoHeader.biWidth;
+    bsdm_header.height = infoHeader.biHeight;
+    bsdm_header.bitsPerPixel = 5;
+    bsdm_header.mode = mode;
+    bsdm_header.isCustomPalette = isDedicatedPaletteUsed;
+    bsdm_header.sizeOfHeader = sizeof (BSDMHEADER);
+
+    fwrite (&bsdm_header,1,sizeof(BSDMHEADER),fBSDM);
+
+    uint8_t * rawBSDMBitmapData = new uint8_t [infoHeader.biSizeImage/3];
+
+    if (bsdm_header.isCustomPalette)
+    {
+
+    }
+    else 
+    {
+        transcodePixels5bits (rawBMPBitmapData,rawBSDMBitmapData,0, infoHeader);
+        fwrite(rawBSDMBitmapData,1,infoHeader.biSizeImage/3,fBSDM);
+    }
+
+    fclose(fBSDM);
+
+}
+void convertSaveBMP (FILE * fBMP, uint8_t * rawBSDMBitmapData, const BSDMHEADER & bsdmHeader, bool isDedicatedPaletteUsed)
+{
+    if (isDedicatedPaletteUsed)
+    {
+
+    }
+    else 
+    {
+        BITMAPFILEHEADER fileHeader;
+        BITMAPINFOHEADER infoHeader;
+
+        memset (&fileHeader,0,sizeof(fileHeader));
+        memset (&infoHeader,0,sizeof(infoHeader));
+
+        fileHeader.bfType = 0x4d42;
+        fileHeader.bfSize = 0; // not important
+        fileHeader.bfOffBits = 0x36;
+
+        fwrite (&fileHeader,sizeof(fileHeader),1,fBMP);
+
+        infoHeader.biSize = 0x28;
+        infoHeader.biWidth = bsdmHeader.width;
+        infoHeader.biHeight = -bsdmHeader.height;
+        infoHeader.biPlanes = 1;
+        infoHeader.biBitCount = 0x18;
+        infoHeader.biCompression = 0;
+        infoHeader.biSizeImage = bsdmHeader.height * ((bsdmHeader.width + 3) & ~3U) * (infoHeader.biBitCount / 8);
+        infoHeader.biXPelsPerMeter = 1;
+        infoHeader.biYPelsPerMeter = 1;
+
+        fwrite (&infoHeader,sizeof(infoHeader),1,fBMP);
+
+        uint32_t rawDataSize = bsdmHeader.width * bsdmHeader.height;
+        uint8_t * rawBitmapData = new uint8_t [infoHeader.biSizeImage];
+
+        uint32_t pitch = (infoHeader.biWidth*3 + 3) & ~3U;
+        uint32_t widthPitchDiff = (pitch - bsdmHeader.width) * 3;
+
+        for (int i = 0; i < std::abs(infoHeader.biHeight); i++)
+        {
+            for (int j = 0; j < pitch; j+=3)
+            {
+                rawBitmapData[ i * pitch + j    ] = j < infoHeader.biWidth * 3 ? \
+                (rawBSDMBitmapData[ i * bsdmHeader.width + j / 3] & 0x1)      << 7  : 0xCD;  // B
+                //asm (".byte 0xcc");
+                rawBitmapData[ i * pitch + j + 1] = j < infoHeader.biWidth * 3 ? \
+                (rawBSDMBitmapData[ i * bsdmHeader.width + j / 3] & 0x6)  << 5  : 0xCD;  // G
+                //asm (".byte 0xcc");
+                rawBitmapData[ i * pitch + j + 2] = j < infoHeader.biWidth * 3 ? \
+                (rawBSDMBitmapData[ i * bsdmHeader.width + j / 3] & 0x18) << 3  : 0xCD; // R
+            } 
+        }
+        fwrite (rawBitmapData,infoHeader.biSizeImage,1,fBMP);
+        //asm (".byte 0xcc");
+        std::cout << "AAAA" << std::endl;   
+    }
+}
+
+int main(int argc, const char * argv[])
+{
+    if (argc < 3)
+    {
+        std::cout << "[!] Usage: ./bsdm <in> <out> " << std::endl;
+    }
+
+    FILE * in = fopen(argv[1], "rb");
+    FILE * out = fopen (argv[2], "wb");
+
+     // allocating memory for these in specific functions
+    uint8_t * rawBSDMBitmapData;
+
+    char magic [4];
+
+    if (fread (magic,1,4,in) != 4)
+    {
+        return -1;
+    }
+    fseek (in,0,0); // set to begining 
+    if ( !strncmp(magic,"BM",2)) // BMP to BSDM
+    {
+        BITMAPFILEHEADER BMPfileHeaderIN;
+        BITMAPINFOHEADER BMPinfoHeaderIN;
+
+        if (readBMPHeaders(in,BMPfileHeaderIN,BMPinfoHeaderIN))
+        {
+            return 1;
+        }
+        uint8_t * rawBMPBitmapData = readRawBMPData (in,BMPfileHeaderIN,BMPinfoHeaderIN);
+
+        convertSaveBSDM (out,BMPfileHeaderIN,BMPinfoHeaderIN,rawBMPBitmapData,0,false);
+    }
+    else if ( !strncmp(magic,"BSDM",4) ) // BSDM to BMP, 24 bit RGB Windows bitmap
+    {
+        // TODO PALETTE
+        BSDMHEADER BSDMheaderIN;
+        if (readBSDMHeader(in,BSDMheaderIN))
+        {
+            return 1;
+        }
+        uint8_t * rawBSDMBitmapData = readRawBSDMData (in,BSDMheaderIN);
+        convertSaveBMP (out,rawBSDMBitmapData,BSDMheaderIN,false);
+    }
+
+    fclose (in);
+    fclose (out);
     
     return 0;
 }
