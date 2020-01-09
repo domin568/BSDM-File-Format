@@ -6,6 +6,8 @@
 #include <map>
 #include <vector>
 #include <inttypes.h>
+#include <string>
+#include <vector>
 
 struct BITMAPFILEHEADER
 {
@@ -57,23 +59,94 @@ struct bsdm_palette_entry
 };
 
 // TODOOOOOOOOOOOOOOOOOOOOOOOOO
-/*
-uint8_t lzw_encode (uint8_t * data, uint32_t size)
+
+std::vector<int> lzw_compression (uint8_t **data, uint32_t width,uint32_t height)
 {
-    std::map <uint32_t,uint8_t *> m;
-    for (int i = 0; i < 0xff; i++)
+    std::map <std::string,int> lzwDic;
+   int dicSize = 32;
+
+    // 
+
+   for (int i = 0; i < 32; i++)
     {
-        data[i] = (unsigned char)i;
+        lzwDic[std::string(1,i)] = i;
     }
-    uint8_t c = data[0];
-    uint32_t pos = 1;
-    while (pos < size)
-    {
-        uint8_t s = data[pos];
+    
+    std::string toCompress = "";
+    for(int i=0;i<width;i++){
+        for(int j=0;j<height;j++){
+
+            toCompress += data[i][j];
+
+        }
     }
-    return 0;
+
+    std::string prev;
+    char curr;
+    std::string pc;
+    std::vector<int> encodedVal; 
+
+    for(int i=0;i<toCompress.length();i++){
+
+        curr = toCompress[i];
+        pc = prev + curr;
+        if(lzwDic.count(pc))
+        prev = pc;
+        else {
+
+            encodedVal.push_back(lzwDic[prev]);
+            lzwDic[pc] = dicSize++;
+            prev = std::string(1,curr);
+
+        }
+    }
+
+    if(!prev.empty())
+    encodedVal.push_back(lzwDic[prev]);
+
+    return encodedVal;
 }
-*/
+
+std::string lzw_decompress(std::vector<int> encoded){
+
+    std::map<int,std::string> lzwDic;
+
+    int dicSize = 32;
+
+    for(int i=0;i<32;i++){
+        lzwDic[i] = std::string(1,i);
+    }
+
+    std::string prev(1,*encoded.begin());
+    std::string decompressed = prev;
+    std::string in;
+    int curr;
+
+    for(int i=0;i<encoded.size();i++){
+        curr = encoded[i];
+
+        if(lzwDic.count(curr))
+        in = lzwDic[curr];
+        else if(curr == dicSize){
+            in = prev + prev[0];
+        }
+
+
+    decompressed += in;
+    lzwDic[dicSize++] = prev + in[0];
+
+
+    prev = in;
+    }
+
+    return decompressed;
+}
+
+
+
+
+
+
 template<typename T>
 bool readHelper (FILE * file , T * data)
 {
