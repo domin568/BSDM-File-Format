@@ -8,6 +8,7 @@
 #include <inttypes.h>
 #include <string>
 #include <vector>
+#include <list>
 
 struct BITMAPFILEHEADER
 {
@@ -79,88 +80,120 @@ struct BSDM_PALETTE
 	std::vector<BSDM_PALETTE_ENTRY> colors;
 };
 
-std::vector<int> lzw_compression(uint8_t** data, uint32_t width, uint32_t height)
+std::list<uint8_t> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
 {
-	std::map <std::string, int> lzwDic;
-	int dicSize = 32;
+    std::map <std::string, int> lzwDic;
+    int dicSize = 32;
 
-	// 5 bits 
+    
 
-	for (int i = 0; i < 32; i++)
-	{
-		lzwDic[std::string(1, i)] = i;
-	}
+    for (int i = 0; i < 32; i++)
+    {
+        lzwDic[std::string(1, i)] = i;
+    }
 
-	std::string toCompress = "";
-	for (int i = 0; i < width; i++) {
-		for (int j = 0; j < height; j++) {
+    std::string toCompress = "";
+    for (int i = 0; i < BSDMDataSize; i++) {
+        toCompress += rawBSDMData[i];
+    }
 
-			toCompress += data[i][j];
+    std::string prev;
+    char curr;
+    std::string pc;
+    std::list<uint8_t> encodedVal;
 
-		}
-	}
+    for (int i = 0; i < toCompress.length(); i++) {
 
-	std::string prev;
-	char curr;
-	std::string pc;
-	std::vector<int> encodedVal;
+        curr = toCompress[i];
+        pc = prev + curr;
+        if (lzwDic.count(pc))
+            prev = pc;
+        else {
 
-	for (int i = 0; i < toCompress.length(); i++) {
+            encodedVal.push_back(lzwDic[prev]);
+            lzwDic[pc] = dicSize++;
+            prev = std::string(1, curr);
 
-		curr = toCompress[i];
-		pc = prev + curr;
-		if (lzwDic.count(pc))
-			prev = pc;
-		else {
+        }
+    }
 
-			encodedVal.push_back(lzwDic[prev]);
-			lzwDic[pc] = dicSize++;
-			prev = std::string(1, curr);
+    if (!prev.empty())
+        encodedVal.push_back(lzwDic[prev]);
 
-		}
-	}
-
-	if (!prev.empty())
-		encodedVal.push_back(lzwDic[prev]);
-
-	return encodedVal;
+    return encodedVal;
 }
 
-std::string lzw_decompress(std::vector<int> encoded)
-{
+std::string lzw_decompress(std::list<uint8_t> encoded) {
 
-	std::map<int, std::string> lzwDic;
+    std::map<int, std::string> lzwDic;
 
-	int dicSize = 32;
+    int dicSize = 32;
 
-	for (int i = 0; i < 32; i++) {
-		lzwDic[i] = std::string(1, i);
-	}
+    for (int i = 0; i < 32; i++) {
+        lzwDic[i] = std::string(1, i);
+    }
 
-	std::string prev(1, *encoded.begin());
-	std::string decompressed = prev;
-	std::string in;
-	int curr;
+    std::string prev(1, *encoded.begin());
+    std::string decompressed = prev;
+    std::string in;
+    int curr;
 
-	for (int i = 0; i < encoded.size(); i++) {
-		curr = encoded[i];
+    for (auto it = ++(encoded.begin()); it != encoded.end(); ++it) {
+        curr = *it;
 
-		if (lzwDic.count(curr))
-			in = lzwDic[curr];
-		else if (curr == dicSize) {
-			in = prev + prev[0];
-		}
-
-
-		decompressed += in;
-		lzwDic[dicSize++] = prev + in[0];
+        if (lzwDic.count(curr))
+            in = lzwDic[curr];
+        else if (curr == dicSize) {
+            in = prev + prev[0];
+        }
+        else
+            throw std::runtime_error("Bad compression of data");
 
 
-		prev = in;
-	}
+        decompressed += in;
+        lzwDic[dicSize++] = prev + in[0];
 
-	return decompressed;
+
+        prev = in;
+    }
+
+    return decompressed;
 }
+
+uint8_t *ListToArray(std::list<uint8_t> list){
+
+uint8_t array[list.size()];
+
+std::copy(list.begin(),list.end(),array);
+
+return array;
+}
+
+
+std::list <uint8_t> ArrayToList(uint8_t *array){
+
+std::list<uint8_t> ret(array,array+sizeof(array)/sizeof(uint8_t));
+
+return ret;
+}
+
+
+
+uint8_t *ConvertStringtoBDSMrawData(std::string decompressed,int BSDMDataSize){
+
+uint8_t *rawBSDMData = new uint8_t[BSDMDataSize];
+
+
+for(int i=0;i<BSDMDataSize;i++){
+   rawBSDMData = (uint8_t*)decompressed[i];
+}
+
+return rawBSDMData;
+}
+
+
+
+
 
 void DitheringColor(uint8_t* src) {
 	uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight * 3;
@@ -552,7 +585,9 @@ void DitheringColor(uint8_t* src) {
 		else
 		{
 			transcodePixels5bits(rawBMPBitmapData, rawBSDMBitmapData, 0, infoHeader);
-			//lzw_compression () // <------------- TUTAJ MUSI BYĆ KOMPRESJA LZW na rawBSDMBitmapData
+			std::list<uint8_t> rawBSDMBit = lzw_compression(rawBSDMBitmapData,bsdm_header.width*bsdm_header.height);
+
+        	rawBSDMBitmapData = ListToArray(rawBSDMBit);
 			fwrite(rawBSDMBitmapData, 1, infoHeader.biSizeImage / 3, fBSDM);
 		}
 
@@ -688,7 +723,11 @@ void DitheringColor(uint8_t* src) {
 			else
 			{
 				uint8_t* rawBSDMBitmapData = readRawBSDMData(in, BSDMheaderIN);
-				//lzw_decompress // <--------- dekompresja surowych danych bitmapy BSDM 
+				std::list<uint8_t> rawBSDMBit = ArrayToList(rawBSDMBitmapData);
+
+        		std::string decompressed = lzw_decompress(rawBSDMBit);
+
+        		rawBSDMBitmapData = ConvertStringtoBDSMrawData(decompressed,BSDMheaderIN.width*BSDMheaderIN.height);
 				convertSaveBMP(out, rawBSDMBitmapData, BSDMheaderIN);
 			}
 		}
