@@ -702,7 +702,12 @@ void convertSaveBSDM (FILE * fBSDM, const BITMAPFILEHEADER & fileHeader, const B
         //lzw_compression () // <------------- TUTAJ MUSI BYĆ KOMPRESJA LZW na rawBSDMBitmapData
         fwrite(rawBSDMBitmapData,1,infoHeader.biSizeImage/3,fBSDM);
     }
-
+	/*if (bsdm_header.mode) {
+		grayscaleIn5bits(rawBMPBitmapData, rawBSDMBitmapData, infoHeader);
+	}
+	if (dithering) {
+		ditheringColor(rawBMPBitmapData, rawBSDMBitmapData, infoHeader, palette);
+	}			not sure*/ 
     fclose(fBSDM);
 
 }
