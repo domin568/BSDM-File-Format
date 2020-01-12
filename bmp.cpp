@@ -6,7 +6,7 @@
 #include <map>
 #include <vector>
 #include <inttypes.h>
-#include <string>
+#include <cstring>
 #include <vector>
 #include <list>
 
@@ -16,7 +16,7 @@ struct BITMAPFILEHEADER
     unsigned int bfSize;
     unsigned int reserved;
     unsigned int bfOffBits;
-    
+
 }__attribute__((packed));
 
 struct BITMAPINFOHEADER
@@ -32,7 +32,7 @@ struct BITMAPINFOHEADER
     unsigned int biYPelsPerMeter;
     unsigned int biClrUsed;
     unsigned int biClrImportant;
-    
+
 }__attribute__((packed));
 
 struct RGB_color
@@ -52,16 +52,16 @@ struct RGB_color
     {
         out << std::hex << "r : " << (int)color.r <<  " " << "g : " << (int)color.g << " " << "b : " << (int)color.b;
         return out;
-    } 
+    }
 };
 
-struct BSDMHEADER 
+struct BSDMHEADER
 {
     uint32_t magic;
     uint32_t width;
     uint32_t height;
     uint8_t bitsPerPixel;
-    uint8_t mode;            // color, grayscale       
+    uint8_t mode;            // color, grayscale
     uint8_t isCustomPalette; // true,false
     uint32_t sizeOfHeader;   // 0x13
 }__attribute__((packed));
@@ -69,7 +69,7 @@ struct BSDMHEADER
 struct BSDM_PALETTE
 {
     uint8_t numberOfColors;
-    RGB_color * colors; 
+    RGB_color * colors;
 };
 
 std::list<uint8_t> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
@@ -77,7 +77,7 @@ std::list<uint8_t> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
     std::map <std::string, int> lzwDic;
     int dicSize = 32;
 
-    
+
 
     for (int i = 0; i < 32; i++)
     {
@@ -188,61 +188,22 @@ uint8_t *ConvertStringtoBDSMrawData(std::string decompressed,int BSDMDataSize)
 }
 
 
-void ditheringColor(uint8_t* src, BITMAPINFOHEADER & infoHeader) 
-{
-    uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight * 3;
-    uint32_t width = infoHeader.biWidth;
-    RGB_color newColor;
-    for (int i = 0; i < dataSizeWithoutPitches; i += 3)
-    {
-        uint8_t oldR = src[i];
-        uint8_t oldG = src[i + 1];
-        uint8_t oldB = src[i + 2];
-        RGB_color oldColor = { oldR,oldG,oldB };
-        //  newColor = find_closest_palette_color(oldColor);
-        uint8_t newR = newColor.r;
-        uint8_t newG = newColor.g;
-        uint8_t newB = newColor.b;
-
-        src[i] = newR;
-        src[i + 1] = newG;
-        src[i + 2] = newB;
-
-        int errorR = src[i] - newR;             //not sure, maybe change places with 181-183
-        int errorG = src[i + 1] - newG;
-        int errorB = src[i + 2] - newB;
-
-        src[i + 3] = src[i + 3] + errorR * (7.0f / 16.0f);
-        src[i + 4] = src[i + 4] + errorG * (7.0f / 16.0f);
-        src[i + 5] = src[i + 5] + errorB * (7.0f / 16.0f);
-
-        src[i + width - 3] = src[i + width - 3] + errorR * (3.0f / 16.0f);
-        src[i + width - 2] = src[i + width - 2] + errorG * (3.0f / 16.0f);
-        src[i + width - 1] = src[i + width - 1] + errorB * (3.0f / 16.0f);
-
-        src[i + width] = src[i + width] + errorR * (5.0f / 16.0f);
-        src[i + width + 1] = src[i + width + 1] + errorG * (5.0f / 16.0f);
-        src[i + width + 2] = src[i + width + 2] + errorB * (5.0f / 16.0f);
-
-        src[i + width + 3] = src[i + width + 3] + errorR * (1.0f / 16.0f);
-        src[i + width + 4] = src[i + width + 4] + errorG * (1.0f / 16.0f);
-        src[i + width + 5] = src[i + width + 5] + errorB * (1.0f / 16.0f);
 
 
-        /*pixels[y][x + 1].red   = pixels[y][x + 1].red   + ErrorR * (7.0f / 16.0f);
-            pixels[y][x + 1].green = pixels[y][x + 1].green + ErrorG * (7.0f / 16.0f);
-            pixels[y][x + 1].blue  = pixels[y][x + 1].blue  + ErrorB * (7.0f / 16.0f);
-            pixels[y + 1][x - 1].red    = pixels[y + 1][x - 1].red   + ErrorR * (3.0f / 16.0f);
-            pixels[y + 1][x - 1].green  = pixels[y + 1][x - 1].green + ErrorG * (3.0f / 16.0f);
-            pixels[y + 1][x - 1].blue   = pixels[y + 1][x - 1].blue  + ErrorB * (3.0f / 16.0f);
-            pixels[y + 1][x].red    = pixels[y + 1][x].red   + ErrorR * (5.0f / 16.0f);
-            pixels[y + 1][x].green  = pixels[y + 1][x].green + ErrorG * (5.0f / 16.0f);
-            pixels[y + 1][x].blue   = pixels[y + 1][x].blue  + ErrorB * (5.0f / 16.0f);
-            pixels[y + 1][x + 1].red    = pixels[y + 1][x + 1].red   + ErrorR * (1.0f / 16.0f);
-            pixels[y + 1][x + 1].green  = pixels[y + 1][x + 1].green + ErrorG * (1.0f / 16.0f);
-            pixels[y + 1][x + 1].blue   = pixels[y + 1][x + 1].blue  + ErrorB * (1.0f / 16.0f);*/
-
-    }
+void grayscaleIn5bits(const uint8_t* src, uint8_t* dst, const BITMAPINFOHEADER& infoHeader) {
+	uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight * 3;
+	uint8_t BW = 0;
+	for (int i = 0; i < dataSizeWithoutPitches; i += 3) {
+		uint8_t r = src[i];
+		uint8_t g = src[i + 1];
+		uint8_t b = src[i + 2];
+		BW = 0.299 * r + 0.587 * g + 0.114 * b;
+		BW = BW >> 3;
+		//BACK TO RGB = BW*255/31
+		dst[i] = BW; // to check
+		dst[i+1] = BW;
+		dst[i+2] = BW;
+	}
 }
 
 template<typename T>
@@ -266,7 +227,7 @@ int readBMPHeaders (FILE * bmpFile, BITMAPFILEHEADER & fileHeader, BITMAPINFOHEA
         std::cout << "[!] Failed to parse fileHeader" << std::endl;
         return 1;
     }
-    
+
     if (!(readHelper(bmpFile,&infoHeader.biSize) &&
           readHelper(bmpFile, &infoHeader.biWidth)&&
           readHelper(bmpFile, &infoHeader.biHeight) &&
@@ -311,7 +272,7 @@ uint8_t * readRawBMPData (FILE * bmpFile, const BITMAPFILEHEADER & fileHeader, c
     fseek(bmpFile,fileHeader.bfOffBits,0);
     uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight *3;
 
-    uint8_t * data = new uint8_t [dataSizeWithoutPitches];    
+    uint8_t * data = new uint8_t [dataSizeWithoutPitches];
 
     uint8_t * line = new uint8_t [pitch];
     uint8_t tmp;
@@ -327,7 +288,7 @@ uint8_t * readRawBMPData (FILE * bmpFile, const BITMAPFILEHEADER & fileHeader, c
             line[j+2] = tmp;
         }
 
-        memcpy (data+offset,line,infoHeader.biWidth*3);   
+        memcpy (data+offset,line,infoHeader.biWidth*3);
         offset -= infoHeader.biWidth * 3;
     }
     return data;
@@ -336,7 +297,7 @@ uint8_t * readRawBSDMData (FILE * bsdmFile, const BSDMHEADER & header)
 {
     fseek(bsdmFile,header.sizeOfHeader,0);
     uint32_t rawDataSize = header.width * header.height;
-    uint8_t * data = new uint8_t [rawDataSize];    
+    uint8_t * data = new uint8_t [rawDataSize];
     fread(data, 1, rawDataSize, bsdmFile);
     return data;
 }
@@ -344,7 +305,7 @@ void transcodePixels5bits (const uint8_t * src, uint8_t * dst, bool direction, c
 {
     // direction == 0 --> BMP to BSDM
     // direction == 1 --> BSDM to BMP
-    
+
     if (direction == 0)
     {
         uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight *3;
@@ -366,7 +327,7 @@ void transcodePixels5bits (const uint8_t * src, uint8_t * dst, bool direction, c
                 dst[i/3] = dst[i/3] | b;
             }
         }
-        
+
     }
     else if (direction == 1)
     {
@@ -374,14 +335,14 @@ void transcodePixels5bits (const uint8_t * src, uint8_t * dst, bool direction, c
     }
 }
 
-typedef struct 
+typedef struct
 {
     uint8_t value[3];
 } MCTriplet;
 
 #define NUM_DIM 3
 
-typedef struct 
+typedef struct
 {
     MCTriplet min;
     MCTriplet max;
@@ -411,7 +372,7 @@ void MCShrinkCube(MCCube *cube)
     cube->min = MCTripletMake(0xFF, 0xFF, 0xFF);
     cube->max = MCTripletMake(0x00, 0x00, 0x00);
 
-    for (int i = 0; i < cube->size; i++) 
+    for (int i = 0; i < cube->size; i++)
     {
         r = data[i].value[0];
         g = data[i].value[1];
@@ -441,10 +402,10 @@ void MCCalculateBiggestDimension(MCCube *cube)
     uint32_t diff = 0;
     uint32_t current;
 
-    for (int i = 0; i < NUM_DIM; i++) 
+    for (int i = 0; i < NUM_DIM; i++)
     {
         current = cube->max.value[i] - cube->min.value[i];
-        if (current > diff) 
+        if (current > diff)
         {
             dim = i;
             diff = current;
@@ -517,14 +478,14 @@ BSDM_PALETTE * MCQuantizeData(MCTriplet *data, uint32_t size, uint8_t level)
         MCShrinkCube(&cubes[parentIndex]);
         MCShrinkCube(&cubes[parentIndex+offset]);
 
-        /* check if iLevel must be increased by analysing if the next 
+        /* check if iLevel must be increased by analysing if the next
         * offset is within palette size boundary. If not, change level
         * and reset parent to 0. If it is, set next element as parent. */
-        if (parentIndex + (offset * 2) < p_size) 
+        if (parentIndex + (offset * 2) < p_size)
         {
             parentIndex = parentIndex + (offset * 2);
-        } 
-        else 
+        }
+        else
         {
             parentIndex = 0;
             iLevel++;
@@ -562,7 +523,7 @@ void readBSDMPalette (FILE * fBSDM, BSDM_PALETTE & palette)
     uint32_t size = sizeof (RGB_color) * nColors;
     RGB_color * colors = (RGB_color *) malloc (size);
     fread(colors,size,1,fBSDM);
-    palette.colors = colors;    
+    palette.colors = colors;
 }
 
 void convertSaveBMPPalette (FILE * fBSDM, FILE * fBMP, BSDM_PALETTE & palette, const BSDMHEADER & header)
@@ -629,14 +590,14 @@ uint8_t findClosestColorIndexFromPalette(RGB_color needle, BSDM_PALETTE * palett
     uint32_t dR, dG, dB;
     RGB_color current;
 
-    for (int i = 0; i < palette->numberOfColors; i++) 
+    for (int i = 0; i < palette->numberOfColors; i++)
     {
         current = palette->colors[i];
         dR = needle.r - current.r;
         dG = needle.g - current.g;
         dB = needle.b - current.b;
         d = dR * dR + dG * dG + dB * dB;
-        if (d < minimal) 
+        if (d < minimal)
         {
             minimal = d;
             index = i;
@@ -648,15 +609,58 @@ uint8_t findClosestColorIndexFromPalette(RGB_color needle, BSDM_PALETTE * palett
 void saveColorNumbers (FILE * fBSDM, BSDM_PALETTE * palette, RGB_color * rawBMPBitmapData, const BITMAPINFOHEADER & infoHeader)
 {
     RGB_color * pixel;
-    for (int i = 0; i < infoHeader.biHeight; i++) 
+    for (int i = 0; i < infoHeader.biHeight; i++)
     {
-        for (int j = 0; j < infoHeader.biWidth; j++) 
+        for (int j = 0; j < infoHeader.biWidth; j++)
         {
             pixel = &rawBMPBitmapData[i*infoHeader.biWidth + j];
             uint8_t idx = findClosestColorIndexFromPalette(*pixel, palette);
             fwrite(&idx,1,1,fBSDM);
         }
     }
+}
+
+void ditheringColor(const uint8_t* src, uint8_t* dst, BITMAPINFOHEADER& infoHeader, BSDM_PALETTE* palette)
+{
+	uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight * 3;
+	uint32_t width = infoHeader.biWidth;
+	RGB_color newColor;
+	for (int i = 0; i < dataSizeWithoutPitches; i += 3)
+	{
+		uint8_t oldR = src[i];
+		uint8_t oldG = src[i + 1];
+		uint8_t oldB = src[i + 2];
+		RGB_color oldColor = { oldR,oldG,oldB };
+		newColor = palette->colors[findClosestColorIndexFromPalette(oldColor, palette)];
+		uint8_t newR = newColor.r;
+		uint8_t newG = newColor.g;
+		uint8_t newB = newColor.b;
+
+		dst[i] = newR;
+		dst[i + 1] = newG;
+		dst[i + 2] = newB;
+
+		int errorR = dst[i] - newR;
+		int errorG = dst[i + 1] - newG;
+		int errorB = dst[i + 2] - newB;
+
+		dst[i + 3] = dst[i + 3] + errorR * (7.0f / 16.0f);
+		dst[i + 4] = dst[i + 4] + errorG * (7.0f / 16.0f);
+		dst[i + 5] = dst[i + 5] + errorB * (7.0f / 16.0f);
+
+		dst[i + width - 3] = dst[i + width - 3] + errorR * (3.0f / 16.0f);
+		dst[i + width - 2] = dst[i + width - 2] + errorG * (3.0f / 16.0f);
+		dst[i + width - 1] = dst[i + width - 1] + errorB * (3.0f / 16.0f);
+
+		dst[i + width] = dst[i + width] + errorR * (5.0f / 16.0f);
+		dst[i + width + 1] = dst[i + width + 1] + errorG * (5.0f / 16.0f);
+		dst[i + width + 2] = dst[i + width + 2] + errorB * (5.0f / 16.0f);
+
+		dst[i + width + 3] = dst[i + width + 3] + errorR * (1.0f / 16.0f);
+		dst[i + width + 4] = dst[i + width + 4] + errorG * (1.0f / 16.0f);
+		dst[i + width + 5] = dst[i + width + 5] + errorB * (1.0f / 16.0f);
+
+	}
 }
 
 void convertSaveBSDM (FILE * fBSDM, const BITMAPFILEHEADER & fileHeader, const BITMAPINFOHEADER & infoHeader, uint8_t * rawBMPBitmapData, bool mode, bool isDedicatedPaletteUsed, bool dithering)
@@ -667,9 +671,9 @@ void convertSaveBSDM (FILE * fBSDM, const BITMAPFILEHEADER & fileHeader, const B
     bsdm_header.height = infoHeader.biHeight;
     if (isDedicatedPaletteUsed)
     {
-        bsdm_header.bitsPerPixel = 24; 
+        bsdm_header.bitsPerPixel = 24;
     }
-    else 
+    else
     {
         bsdm_header.bitsPerPixel = 5;
     }
@@ -682,7 +686,7 @@ void convertSaveBSDM (FILE * fBSDM, const BITMAPFILEHEADER & fileHeader, const B
     uint8_t * rawBSDMBitmapData = new uint8_t [bsdm_header.width * bsdm_header.height];
 
     if (bsdm_header.isCustomPalette)
-    {  
+    {
         uint32_t s = bsdm_header.width * bsdm_header.height * 3;
         uint8_t * rawBMPBitmapDataQuantinize = (uint8_t *) malloc (s);
         memcpy (rawBMPBitmapDataQuantinize,rawBMPBitmapData,s);
@@ -692,9 +696,9 @@ void convertSaveBSDM (FILE * fBSDM, const BITMAPFILEHEADER & fileHeader, const B
         saveColorNumbers (fBSDM,palette,(RGB_color *)rawBMPBitmapData,infoHeader);
         free (rawBMPBitmapDataQuantinize);
     }
-    else 
-    {  
-        transcodePixels5bits (rawBMPBitmapData,rawBSDMBitmapData,0, infoHeader); 
+    else
+    {
+        transcodePixels5bits (rawBMPBitmapData,rawBSDMBitmapData,0, infoHeader);
         //lzw_compression () // <------------- TUTAJ MUSI BYĆ KOMPRESJA LZW na rawBSDMBitmapData
         fwrite(rawBSDMBitmapData,1,infoHeader.biSizeImage/3,fBSDM);
     }
@@ -746,7 +750,7 @@ void convertSaveBMP (FILE * fBMP, uint8_t * rawBSDMBitmapData, const BSDMHEADER 
 
             rawBitmapData[ i * pitch + j + 2] = j < infoHeader.biWidth * 3 ? \
             (rawBSDMBitmapData[ i * bsdmHeader.width + j / 3] & 0x18) << 3  : 0xCD; // R
-        } 
+        }
     }
     fwrite (rawBitmapData,infoHeader.biSizeImage,1,fBMP);
 }
@@ -801,7 +805,7 @@ int main(int argc, const char * argv[])
     {
         return -1;
     }
-    fseek (in,0,0); // set to begining 
+    fseek (in,0,0); // set to begining
     if ( !strncmp(magic,"BM",2)) // BMP to BSDM
     {
         BITMAPFILEHEADER BMPfileHeaderIN;
@@ -829,20 +833,20 @@ int main(int argc, const char * argv[])
             readBSDMPalette(in,palette);
             convertSaveBMPPalette (in,out,palette,BSDMheaderIN);
         }
-        else 
+        else
         {
             uint8_t * rawBSDMBitmapData = readRawBSDMData (in,BSDMheaderIN);
-            //lzw_decompress // <--------- dekompresja surowych danych bitmapy BSDM 
+            //lzw_decompress // <--------- dekompresja surowych danych bitmapy BSDM
             convertSaveBMP (out,rawBSDMBitmapData,BSDMheaderIN);
         }
     }
-    else 
+    else
     {
         std::cout << "[!] Unknown file format !" << std::endl;
     }
 
     fclose (in);
     fclose (out);
-    
+
     return 0;
 }
