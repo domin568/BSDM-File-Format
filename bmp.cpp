@@ -199,7 +199,7 @@ void DitheringColor(uint8_t* src) {
 	uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight * 3;
 	uint32_t width = infoHeader.biWidth;
 	RGB_color newColor;
-	for (int i = 0; i < dataSizeWithoutPitches; i += 3)
+	for (int i = 0; i < dataSizeWithoutPitches-width-3; i += 3)
 	{
 
 		uint8_t oldR = src[i];
