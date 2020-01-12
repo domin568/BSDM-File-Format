@@ -63,7 +63,7 @@ struct BSDMHEADER
 	uint32_t width;
 	uint32_t height;
 	uint8_t bitsPerPixel;
-	uint8_t mode;            // color, grayscale       
+	uint8_t mode;            // color, grayscale
 	uint8_t isCustomPalette; // true,false
 	uint32_t sizeOfHeader;   // 0x13
 }__attribute__((packed));
@@ -85,7 +85,7 @@ std::list<uint8_t> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
     std::map <std::string, int> lzwDic;
     int dicSize = 32;
 
-    
+
 
     for (int i = 0; i < 32; i++)
     {
@@ -195,12 +195,11 @@ return rawBSDMData;
 
 
 
-void DitheringColor(uint8_t* src) {
+void DitheringColor(uint8_t* src, const BITMAPINFOHEADER& infoHeader) {
 	uint32_t dataSizeWithoutPitches = infoHeader.biWidth * infoHeader.biHeight * 3;
 	uint32_t width = infoHeader.biWidth;
 	RGB_color newColor;
-	for (int i = 0; i < dataSizeWithoutPitches-width-3; i += 3)
-	{
+	for (int i = 0; i < dataSizeWithoutPitches-width-3; i += 3){
 
 		uint8_t oldR = src[i];
 		uint8_t oldG = src[i + 1];
@@ -234,7 +233,8 @@ void DitheringColor(uint8_t* src) {
 		src[i + width + 3] = src[i + width + 3] + errorR * (1.0f / 16.0f);
 		src[i + width + 4] = src[i + width + 4] + errorG * (1.0f / 16.0f);
 		src[i + width + 5] = src[i + width + 5] + errorB * (1.0f / 16.0f);
-
+	}
+}
 
 		/*pixels[y][x + 1].red   = pixels[y][x + 1].red   + ErrorR * (7.0f / 16.0f);
 			pixels[y][x + 1].green = pixels[y][x + 1].green + ErrorG * (7.0f / 16.0f);
@@ -252,7 +252,7 @@ void DitheringColor(uint8_t* src) {
 			pixels[y + 1][x + 1].green  = pixels[y + 1][x + 1].green + ErrorG * (1.0f / 16.0f);
 			pixels[y + 1][x + 1].blue   = pixels[y + 1][x + 1].blue  + ErrorB * (1.0f / 16.0f);*/
 
-	}
+
 	/*
 
 	void FloydSteinbergBW(uint8_t * data, uint32_t width, uint32_t height)
@@ -692,7 +692,7 @@ void DitheringColor(uint8_t* src) {
 		{
 			return -1;
 		}
-		fseek(in, 0, 0); // set to begining 
+		fseek(in, 0, 0); // set to begining
 		if (!strncmp(magic, "BM", 2)) // BMP to BSDM
 		{
 			BITMAPFILEHEADER BMPfileHeaderIN;
