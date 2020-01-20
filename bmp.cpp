@@ -64,6 +64,7 @@ struct BSDMHEADER
     uint8_t mode;            // color, grayscale
     uint8_t isCustomPalette; // true,false
     uint32_t sizeOfHeader;   // 0x13
+    uint8_t LZWCodeLength; // dlugosc slowa LZW
 }__attribute__((packed));
 
 struct BSDM_PALETTE
@@ -72,14 +73,14 @@ struct BSDM_PALETTE
     RGB_color * colors;
 };
 
-std::list<uint8_t> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
+std::list<int> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
 {
     std::map <std::string, int> lzwDic;
-    int dicSize = 32;
+    int dicSize = 32;  // Wartosc dla 5 bitow
 
 
 
-    for (int i = 0; i < 32; i++)
+    for (int i = 0; i < 32; i++) // wartosc 5 bitow
     {
         lzwDic[std::string(1, i)] = i;
     }
@@ -92,7 +93,7 @@ std::list<uint8_t> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
     std::string prev;
     char curr;
     std::string pc;
-    std::list<uint8_t> encodedVal;
+    std::list<int> encodedVal;
 
     for (int i = 0; i < toCompress.length(); i++) {
 
@@ -115,7 +116,7 @@ std::list<uint8_t> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize)
     return encodedVal;
 }
 
-std::string lzw_decompress(std::list<uint8_t> encoded) {
+std::string lzw_decompress(std::list<int> encoded) {
 
     std::map<int, std::string> lzwDic;
 
@@ -152,28 +153,49 @@ std::string lzw_decompress(std::list<uint8_t> encoded) {
     return decompressed;
 }
 
-uint8_t *ListToArray(std::list<uint8_t> list)
-{
+uint8_t MinNumBits(std::list<int> rsrc) {             // Minimalna liczba bitow potrzebna do zapisania znaku
+  uint8_t minBits = 0;
 
-    uint8_t array[list.size()];
+  int currentBits = 0;
 
-    std::copy(list.begin(),list.end(),array);
+  for (auto it = rsrc.begin(); it != rsrc.end(); ++it) {
+    *it >>= 8; // omijamy wartosci do 255 poniewaz sa domyslne
+    while (*it > 0) {
+      *it >>= 1;
+      ++currentBits;
+    }
+    if (currentBits > minBits)
+      minBits = currentBits;
+    currentBits = 0;
+  }
 
-    return array;
+  return minBits + 8;
 }
 
 
-std::list <uint8_t> ArrayToList(uint8_t *array)
-{
+void writeBit(FILE *bsdmFile, int bitToWrite, bool force) {  // zbiera bajty w pojedynczy bit zeby go zapisac do pliku
+  static int current_bit = 8;
+  static unsigned char bit_buffer;
 
-    std::list<uint8_t> ret (array,array+sizeof(array)/sizeof(uint8_t));
+  if (force) {
+    current_bit = 1;
+  }
 
-    return ret;
+  if (bitToWrite)
+    bit_buffer = bit_buffer | (1 << current_bit - 1);      // nie jestem tego pewny
+
+  --current_bit;
+
+  if (current_bit == 0) {
+    fwrite((char *)&bit_buffer,sizeof((char*)(bit_buffer)),1,bsdmFile);   // nie jestem tego pewny
+    current_bit = 8;
+    bit_buffer = 0;
+  }
 }
 
 
 
-uint8_t *ConvertStringtoBDSMrawData(std::string decompressed,int BSDMDataSize)
+uint8_t *ConvertStringtoBDSMrawData(std::string decompressed,int BSDMDataSize)  // Konwertuje string na tablice z danymi BSDM
 {
 
     uint8_t *rawBSDMData = new uint8_t[BSDMDataSize];
@@ -187,6 +209,36 @@ uint8_t *ConvertStringtoBDSMrawData(std::string decompressed,int BSDMDataSize)
     return rawBSDMData;
 }
 
+
+std::list<int> ReadCompressedData(BSDMHEADER bsdmH,uint8_t *rawBSDMdata){   // cos jest nie tak z ta funkcja, skopiowana
+
+
+    int bitsLeft = bsdmH.LZWCodeLength; // Bits left to add in current symbol
+            int size = bsdmH.width*bsdmH.height;        // nie jestem pewien tego
+
+            std::list<int> compressed(size * 8 / bsdmH.LZWCodeLength, 0);
+            std::list<int>::iterator it = compressed.begin();
+
+            for (int i = 0; i < size; ++i) {
+            if (bitsLeft >= 8) {          // If we need all 8 bits from current char
+            bitsLeft -= 8;              // Substract if from current bits we need
+            *it |= rawBSDMdata[i] << bitsLeft; // Then move bits up match their place
+            } else {                      // If we dont need whole char
+            *it |= rawBSDMdata[i] >> (8 - bitsLeft); // Save number of bits we need
+            compressed.push_back(0);          // Add new element to list
+            ++it;                             // Make it current element
+
+            rawBSDMdata[i] &=
+            ((2 << (7 - bitsLeft)) - 1); // Clear bits takeen by previous symbol
+
+            bitsLeft = bsdmH.LZWCodeLength - 8 +
+                 bitsLeft; // Set new number of needed bits and substract left
+                           // from current char
+            *it |= rawBSDMdata[i] << bitsLeft; // Save rest of bits from current char
+                }
+            }
+
+}
 
 
 
@@ -699,7 +751,26 @@ void convertSaveBSDM (FILE * fBSDM, const BITMAPFILEHEADER & fileHeader, const B
     else
     {
         transcodePixels5bits (rawBMPBitmapData,rawBSDMBitmapData,0, infoHeader);
-        //lzw_compression () // <------------- TUTAJ MUSI BYĆ KOMPRESJA LZW na rawBSDMBitmapData
+        
+        /*
+        
+        
+        std::list<int> compressed = lzw_compression(rawBSDMBitmapData,bsdm_header.width*bsdm_header.height); // kompresuje surowe dane BSDM
+
+
+        bsdm_header.LZWCodeLength = MinNumBits(compressed);  // ustala dlugosc slowa LZW
+
+
+        auto it = compressed.begin();
+
+        for(auto it = compressed.begin();it != compressed.end();it++){
+            for(int x= bsdm_header.LZWCodeLength-1;x >= 0; x--){
+                writeBit(fBSDM,(*it >> x)& 0x01,0);                     // zbiera bajty w pełny bit a później go zapisuje do pliku, nie jestem tego pewien
+            }
+        }
+        writeBit(fBSDM,0,1);                        // wypelnia pozostale miejsce zerami
+        
+        */
         fwrite(rawBSDMBitmapData,1,infoHeader.biSizeImage/3,fBSDM);
     }
 	if (bsdm_header.mode) {
@@ -841,8 +912,21 @@ int main(int argc, const char * argv[])
         }
         else
         {
-            uint8_t * rawBSDMBitmapData = readRawBSDMData (in,BSDMheaderIN);
+            uint8_t * rawBSDMBitmapData = readRawBSDMData (in,BSDMheaderIN);   // ta funkcja musi byc zmieniona bo czyta skompresowane nie surowe dane
+            
+            /*
+            
+            
+            std::list<int> compressed = ReadCompressedData(BSDMheaderIN,rawBSDMBitmapData);
+
+             std::string decompressed = lzw_decompress(compressed);
+
+             rawBSDMBitmapData = ConvertStringtoBDSMrawData(decompressed,BSDMheaderIN.width*BSDMheaderIN.height);
+            
             //lzw_decompress // <--------- dekompresja surowych danych bitmapy BSDM
+            
+            */
+            
             convertSaveBMP (out,rawBSDMBitmapData,BSDMheaderIN);
         }
     }
