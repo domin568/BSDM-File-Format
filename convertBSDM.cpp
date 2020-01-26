@@ -111,6 +111,7 @@ int main(int argc, const char* argv[])
 
 			convertSaveBMP(out, rawBSDMBitmapData, BSDMheaderIN, dithering);
 		}
+
 	}
 	else
 	{
