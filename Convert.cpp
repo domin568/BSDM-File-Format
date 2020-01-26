@@ -33,18 +33,13 @@ void convertSaveBMPPalette(FILE* fBSDM, FILE* fBMP, BSDM_PALETTE& palette, const
 	uint32_t size = header.width * header.height;
 	uint8_t* colorsData = new uint8_t[size];
 
-
-
 	std::list<int> compressed = ReadCompressedData(fBSDM, header, palette);
-
 	std::string decompressed = lzw_decompress(compressed);
-
 	colorsData = ConvertStringtoBDSMrawData(decompressed, header.width * header.height);
-
 
 	uint32_t pitchDiff = pitch - infoHeader.biWidth * 3;
 	uint32_t colorsOfffset = 0;
-	std::cout << pitch << std::endl;
+
 	for (int i = 0; i < size; i++)
 	{
 		uint8_t nColor = colorsData[i];
@@ -53,17 +48,19 @@ void convertSaveBMPPalette(FILE* fBSDM, FILE* fBMP, BSDM_PALETTE& palette, const
 		fwrite(&palette.colors[nColor].r, 1, 1, fBMP);
 		if ((i % infoHeader.biWidth) + 1 == infoHeader.biWidth && pitchDiff)
 		{
-			uint8_t c = 0xCD;
+			uint8_t c = 0xCD; // padding
 			fwrite(&c, pitchDiff, 1, fBMP);
 		}
 	}
+	std::cout << "Size: " << header.width << "x" << header.height << "\n";
+	std::cout << "Custom palette: " << 1 << "\n";
+	std::cout << "Grayscale: " << 0 << "\n";
 }
 
 
 void saveColorNumbers(FILE* fBSDM, BSDM_PALETTE* palette, RGB_color* rawBMPBitmapData, const BITMAPINFOHEADER& infoHeader, BSDMHEADER& bsdm_header)
 {
 	RGB_color* pixel;
-
 	uint8_t* toCompress = new uint8_t[infoHeader.biHeight * infoHeader.biWidth];
 
 	for (int i = 0; i < infoHeader.biHeight; i++)
@@ -75,32 +72,18 @@ void saveColorNumbers(FILE* fBSDM, BSDM_PALETTE* palette, RGB_color* rawBMPBitma
 			toCompress[(i * infoHeader.biWidth) + j] = idx;
 		}
 	}
-
 	std::list<int> compressed = lzw_compression(toCompress, infoHeader.biHeight * infoHeader.biWidth);
 
-
-
 	bsdm_header.LZWCodeLength = MinNumBits(compressed);
-
 	fseek(fBSDM, sizeof(BSDMHEADER) - 1, 0);
-
 	fwrite(&bsdm_header.LZWCodeLength, 1, 1, fBSDM);
-
 	fseek(fBSDM, 0, SEEK_END);
-
-
-
-
 	float LZW = (float)bsdm_header.LZWCodeLength;
-
 	int bytesNeeded = ceil(LZW / 8);
 
-
-	for (auto it = compressed.begin(); it != compressed.end(); it++) {
-
+	for (auto it = compressed.begin(); it != compressed.end(); it++)
+	{
 		fwrite((char*) & *it, bytesNeeded, 1, fBSDM);
-
-
 	}
 }
 
@@ -133,11 +116,10 @@ void convertSaveBSDM(FILE* fBSDM, const BITMAPFILEHEADER& fileHeader, const BITM
 		uint8_t* rawBMPBitmapDataQuantinize = (uint8_t*)malloc(s);
 		memcpy(rawBMPBitmapDataQuantinize, rawBMPBitmapData, s);
 
-		BSDM_PALETTE* palette = MCQuantizeData((MCTriplet*)rawBMPBitmapDataQuantinize, bsdm_header.width * bsdm_header.height, 5);
+		BSDM_PALETTE* palette = medianCut((RGBBytes*)rawBMPBitmapDataQuantinize, bsdm_header.width * bsdm_header.height);
 		if (dithering)
 		{
-			//WIN
-			std::cout << "Paleta custom with dithering" << std::endl;
+			std::cout << "Custom palette with dithering" << std::endl;
 			ditheringColor(rawBMPBitmapData, rawDitheringData, infoHeader, palette);
 			transcodePixels5bits(rawDitheringData, rawBSDMBitmapData, infoHeader);
 			saveBSDMPalette(fBSDM, palette);
@@ -145,8 +127,7 @@ void convertSaveBSDM(FILE* fBSDM, const BITMAPFILEHEADER& fileHeader, const BITM
 		}
 		else
 		{
-			// wIN
-			std::cout << "Paleta custom only\n";
+			std::cout << "Custom palette only\n";
 			saveBSDMPalette(fBSDM, palette);
 			saveColorNumbers(fBSDM, palette, (RGB_color*)rawBMPBitmapData, infoHeader, bsdm_header);
 		}
@@ -165,7 +146,6 @@ void convertSaveBSDM(FILE* fBSDM, const BITMAPFILEHEADER& fileHeader, const BITM
 			}
 			else
 			{
-				//WIN
 				std::cout << "Dithering only on default palette" << std::endl;
 				ditheringColor(rawBMPBitmapData, rawDitheringData, infoHeader, &defaultPalette);
 				transcodePixels5bits(rawDitheringData, rawBSDMBitmapData, infoHeader);
@@ -175,53 +155,36 @@ void convertSaveBSDM(FILE* fBSDM, const BITMAPFILEHEADER& fileHeader, const BITM
 		{
 			if (mode)
 			{
-				// WIN
 				std::cout << "Grayscale only on default palette" << std::endl;
 				grayscaleIn5bits(rawBMPBitmapData, rawBSDMBitmapData, infoHeader);
 			}
 			else
 			{
-				std::cout << "5 bits color on default palette" << std::endl;
+				std::cout << "Defaut palette only" << std::endl;
 				transcodePixels5bits(rawBMPBitmapData, rawBSDMBitmapData, infoHeader);
 			}
 
 		}
 
-
-
 		std::list<int> compressed = lzw_compression(rawBSDMBitmapData, bsdm_header.width * bsdm_header.height);
-
-
-
 		bsdm_header.LZWCodeLength = MinNumBits(compressed);
-
 		fseek(fBSDM, sizeof(BSDMHEADER) - 1, 0);
-
 		fwrite(&bsdm_header.LZWCodeLength, 1, 1, fBSDM);
-
 		fseek(fBSDM, 0, SEEK_END);
-
 		float LZW = (float)bsdm_header.LZWCodeLength;
-
 		int bytesNeeded = ceil(LZW / 8);
 
-
-		for (auto it = compressed.begin(); it != compressed.end(); it++) {
-
+		for (auto it = compressed.begin(); it != compressed.end(); it++)
+		{
 			fwrite((char*) & *it, bytesNeeded, 1, fBSDM);
-
-
 		}
 	}
 	unsigned long len = (unsigned long)ftell(fBSDM);
 	std::cout << fileHeader.bfSize << " bytes -> ";
 	std::cout << len << " bytes \n";
-	std::cout << bsdm_header.width << "x" << bsdm_header.height;
-
+	std::cout << bsdm_header.width << "x" << bsdm_header.height << std::endl;
 	fclose(fBSDM);
-
 }
-
 void convertSaveBMP(FILE* fBMP, uint8_t* rawBSDMBitmapData, const BSDMHEADER& bsdmHeader, bool dithering)
 {
 	BITMAPFILEHEADER fileHeader;
@@ -238,7 +201,7 @@ void convertSaveBMP(FILE* fBMP, uint8_t* rawBSDMBitmapData, const BSDMHEADER& bs
 	bool mode = bsdmHeader.mode;
 	infoHeader.biSize = 0x28;
 	infoHeader.biWidth = bsdmHeader.width;
-	infoHeader.biHeight = -bsdmHeader.height;
+	infoHeader.biHeight = -bsdmHeader.height; // !
 	infoHeader.biPlanes = 1;
 	infoHeader.biBitCount = 0x18;
 	infoHeader.biCompression = 0;
@@ -257,7 +220,6 @@ void convertSaveBMP(FILE* fBMP, uint8_t* rawBSDMBitmapData, const BSDMHEADER& bs
 	std::cout << "Custom palette: " << (int)bsdmHeader.isCustomPalette << "\n";
 	std::cout << "Grayscale: " << (int)bsdmHeader.mode << "\n";
 
-
 	if (mode)
 	{
 		for (int i = 0; i < std::abs(infoHeader.biHeight); i++) // negative height
@@ -271,7 +233,7 @@ void convertSaveBMP(FILE* fBMP, uint8_t* rawBSDMBitmapData, const BSDMHEADER& bs
 					(rawBSDMBitmapData[i * bsdmHeader.width + j / 3] * 255 / 31) : 0xCD;  // BW
 
 				rawBitmapData[i * pitch + j + 2] = j < infoHeader.biWidth * 3 ? \
-					(rawBSDMBitmapData[i * bsdmHeader.width + j / 3] * 255 / 31) : 0xCD;
+					(rawBSDMBitmapData[i * bsdmHeader.width + j / 3] * 255 / 31) : 0xCD; //  BW
 			}
 		}
 	}

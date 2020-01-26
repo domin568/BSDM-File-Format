@@ -16,7 +16,6 @@
 #include "Files.h"
 #pragma pack(1)
 
- 
 int main(int argc, const char* argv[])
 {
 	bool customPalette = false;
@@ -70,6 +69,7 @@ int main(int argc, const char* argv[])
 		return -1;
 	}
 	fseek(in, 0, 0); // set to begining 
+
 	if (!strncmp(magic, "BM", 2)) // BMP to BSDM
 	{
 		BITMAPFILEHEADER BMPfileHeaderIN;
@@ -101,17 +101,12 @@ int main(int argc, const char* argv[])
 		{
 			BSDM_PALETTE null;
 			std::list<int> compressed = ReadCompressedData(in, BSDMheaderIN, null);
-
 			std::string decompressed = lzw_decompress(compressed);
-
-
 			uint8_t* rawBSDMBitmapData = new uint8_t[BSDMheaderIN.width * BSDMheaderIN.height];
 
 			rawBSDMBitmapData = ConvertStringtoBDSMrawData(decompressed, BSDMheaderIN.width * BSDMheaderIN.height);
-
 			convertSaveBMP(out, rawBSDMBitmapData, BSDMheaderIN, dithering);
 		}
-
 	}
 	else
 	{

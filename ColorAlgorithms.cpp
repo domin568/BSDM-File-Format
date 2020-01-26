@@ -3,30 +3,31 @@
 uint8_t findClosestColorIndexFromPalette(RGB_color needle, BSDM_PALETTE* palette)
 {
 	// search for smallest Euclidean distance
-	uint8_t index;
-	uint32_t d, minimal = 255 * 255 * 3 + 1;
+	uint8_t idx;
+	uint32_t d;
+	uint32_t min = 255 * 255 * 3 + 1;
 	uint32_t dR, dG, dB;
-	RGB_color current;
+	RGB_color curr;
 
 	for (int i = 0; i < palette->numberOfColors; i++)
 	{
-		current = palette->colors[i];
-		dR = needle.r - current.r;
-		dG = needle.g - current.g;
-		dB = needle.b - current.b;
+		curr = palette->colors[i];
+		dR = needle.r - curr.r;
+		dG = needle.g - curr.g;
+		dB = needle.b - curr.b;
 		d = dR * dR + dG * dG + dB * dB;
-		if (d < minimal)
+		if (d < min)
 		{
-			minimal = d;
-			index = i;
+			min = d;
+			idx = i;
 		}
 	}
-	return index;
+	return idx;
 }
 
-MCTriplet MCTripletMake(uint8_t r, uint8_t g, uint8_t b)
+RGBBytes makeTriplet(uint8_t r, uint8_t g, uint8_t b)
 {
-	MCTriplet triplet;
+	RGBBytes triplet;
 	triplet.value[0] = r;
 	triplet.value[1] = g;
 	triplet.value[2] = b;
@@ -34,15 +35,14 @@ MCTriplet MCTripletMake(uint8_t r, uint8_t g, uint8_t b)
 	return triplet;
 }
 
-void MCShrinkCube(MCCube* cube)
+void shrinkCube(Cube* cube)
 {
 	uint8_t r, g, b;
-	MCTriplet* data;
+	RGBBytes* data;
 
 	data = cube->data;
-
-	cube->min = MCTripletMake(0xFF, 0xFF, 0xFF);
-	cube->max = MCTripletMake(0x00, 0x00, 0x00);
+	cube->min = makeTriplet(0xFF, 0xFF, 0xFF);
+	cube->max = makeTriplet(0x00, 0x00, 0x00);
 
 	for (int i = 0; i < cube->size; i++)
 	{
@@ -60,21 +60,21 @@ void MCShrinkCube(MCCube* cube)
 	}
 }
 
-MCTriplet MCCubeAverage(MCCube* cube)
+RGBBytes cubeAvg(Cube* cube)
 {
-	return MCTripletMake(
+	return makeTriplet(
 		(cube->max.value[0] + cube->min.value[0]) / 2,
 		(cube->max.value[1] + cube->min.value[1]) / 2,
 		(cube->max.value[2] + cube->min.value[2]) / 2
 	);
 }
 
-void MCCalculateBiggestDimension(MCCube* cube)
+void calcBiggestDimension(Cube* cube)
 {
 	uint32_t diff = 0;
 	uint32_t current;
 
-	for (int i = 0; i < NUM_DIM; i++)
+	for (int i = 0; i < 3; i++)
 	{
 		current = cube->max.value[i] - cube->min.value[i];
 		if (current > diff)
@@ -85,75 +85,73 @@ void MCCalculateBiggestDimension(MCCube* cube)
 	}
 }
 
-int MCCompareTriplet(const void* a, const void* b)
+int cmpTriplet(const void* a, const void* b)
 {
-	MCTriplet* t1, * t2;
+	RGBBytes* t1, * t2;
 
-	t1 = (MCTriplet*)a;
-	t2 = (MCTriplet*)b;
+	t1 = (RGBBytes*)a;
+	t2 = (RGBBytes*)b;
 
 	return t1->value[dim] - t2->value[dim];
 }
 
-BSDM_PALETTE* MCQuantizeData(MCTriplet* data, uint32_t size, uint8_t level)
+BSDM_PALETTE* medianCut(RGBBytes* data, uint32_t size)
 {
 	BSDM_PALETTE* pall = (BSDM_PALETTE*)malloc(sizeof(BSDM_PALETTE));
-	int p_size; /* generated palette size */
-	MCCube* cubes;
-	MCTriplet* palette;
+	int pSize; /* generated palette size */
+	RGBBytes* palette;
+	Cube* cubes;
 
-	p_size = pow(2, level);
-	pall->numberOfColors = p_size;
-	cubes = (MCCube*)malloc(sizeof(MCCube) * p_size);
-	palette = (MCTriplet*)malloc(sizeof(MCTriplet) * p_size);
+	pSize = pow(2, 5);
+	pall->numberOfColors = pSize;
+	cubes = (Cube*)malloc(sizeof(Cube) * pSize);
+	palette = (RGBBytes*)malloc(sizeof(RGBBytes) * pSize);
 
-	/* first cube */
-	cubes[0].data = data;
+	cubes[0].data = data; // first cube initialize
 	cubes[0].size = size;
-	MCShrinkCube(cubes);
+	shrinkCube(cubes);
 
-	/* remaining cubes */
 	int parentIndex = 0;
-	int iLevel = 1; /* iteration level */
+	int iLevel = 1;
 	int offset;
 	int median;
-	MCCube* parentCube;
-	while (iLevel <= level)
+	Cube* parentCube;
+	while (iLevel <= 5)
 	{
 		parentCube = &cubes[parentIndex];
 
-		MCCalculateBiggestDimension(parentCube);
-		qsort(parentCube->data, parentCube->size, sizeof(MCTriplet), MCCompareTriplet);
+		calcBiggestDimension(parentCube);
+		qsort(parentCube->data, parentCube->size, sizeof(RGBBytes), cmpTriplet);
 
 		median = parentCube->data[parentCube->size / 2].value[dim];
 
-		offset = p_size / pow(2, iLevel);
+		offset = pSize / pow(2, iLevel);
 
-		/* split cubes */
+		// split
 		cubes[parentIndex + offset] = *parentCube;
 		cubes[parentIndex].max.value[dim] = median;
 		cubes[parentIndex + offset].min.value[dim] = median + 1;
 
-		/* find new cube data sizes */
+		// new cube size
 		uint32_t newSize = 0;
 		while (parentCube->data[newSize].value[dim] < median)
 		{
 			newSize++;
 		}
-		/* newSize is now the index of the first element above the
-		* median, thus it is also the count of elements below the median */
+		// newSize is now the index of the first element above the
+		// median, thus it is also the count of elements below the median 
 		cubes[parentIndex].size = newSize;
 		cubes[parentIndex + offset].data += newSize;
 		cubes[parentIndex + offset].size -= newSize;
 
-		/* shrink new cubes */
-		MCShrinkCube(&cubes[parentIndex]);
-		MCShrinkCube(&cubes[parentIndex + offset]);
+		// shrink
+		shrinkCube(&cubes[parentIndex]);
+		shrinkCube(&cubes[parentIndex + offset]);
 
-		/* check if iLevel must be increased by analysing if the next
-		* offset is within palette size boundary. If not, change level
-		* and reset parent to 0. If it is, set next element as parent. */
-		if (parentIndex + (offset * 2) < p_size)
+		// check if iLevel must be increased by analysing if the next
+		// offset is within palette size boundary. If not, change level
+		// and reset parent to 0. If it is, set next element as parent. 
+		if (parentIndex + (offset * 2) < pSize)
 		{
 			parentIndex = parentIndex + (offset * 2);
 		}
@@ -165,16 +163,13 @@ BSDM_PALETTE* MCQuantizeData(MCTriplet* data, uint32_t size, uint8_t level)
 	}
 
 	/* find final cube averages */
-	for (int i = 0; i < p_size; i++)
+	for (int i = 0; i < pSize; i++)
 	{
-		palette[i] = MCCubeAverage(&cubes[i]);
+		palette[i] = cubeAvg(&cubes[i]);
 	}
 
 	pall->colors = (RGB_color*)palette;
-
 	free(cubes);
-
 	return pall;
 }
-
 

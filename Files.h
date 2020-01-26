@@ -3,7 +3,8 @@
 #include "Color.h"
 #pragma pack(1)
 template<typename T>
-bool readHelper(FILE* file, T* data){
+bool readHelper(FILE* file, T* data)
+{
 	bool isRead = fread(data, sizeof(*data), 1, file);
 
 	if (isRead)

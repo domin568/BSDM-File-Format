@@ -9,7 +9,6 @@ void saveBSDMPalette(FILE* fBSDM, BSDM_PALETTE* palette)
 		fwrite(palette->colors + i / 3, 3, 1, fBSDM);
 	}
 }
-
 void readBSDMPalette(FILE* fBSDM, BSDM_PALETTE& palette)
 {
 	uint8_t nColors;

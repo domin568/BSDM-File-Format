@@ -28,6 +28,6 @@ int readBMPHeaders(FILE* bmpFile, BITMAPFILEHEADER& fileHeader, BITMAPINFOHEADER
 		std::cout << "[!] Failed to parse infoHeader" << std::endl;
 		return 2;
 	}
-	infoHeader.biHeight = std::abs(infoHeader.biHeight);
+	infoHeader.biHeight = std::abs(infoHeader.biHeight); // protection against negative height 
 	return 0;
 }
