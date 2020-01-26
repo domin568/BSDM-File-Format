@@ -212,11 +212,11 @@ void convertSaveBSDM(FILE* fBSDM, const BITMAPFILEHEADER& fileHeader, const BITM
 
 
 		}
-		unsigned long len = (unsigned long)ftell(fBSDM);
-		std::cout << fileHeader.bfSize << " bytes -> ";
-		std::cout << len << " bytes \n";
-		std::cout << bsdm_header.width << "x" << bsdm_header.height;
 	}
+	unsigned long len = (unsigned long)ftell(fBSDM);
+	std::cout << fileHeader.bfSize << " bytes -> ";
+	std::cout << len << " bytes \n";
+	std::cout << bsdm_header.width << "x" << bsdm_header.height;
 
 	fclose(fBSDM);
 
