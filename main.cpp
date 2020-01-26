@@ -16,7 +16,7 @@
 #include "Files.h"
 #pragma pack(1)
 
-
+ 
 int main(int argc, const char* argv[])
 {
 	bool customPalette = false;
