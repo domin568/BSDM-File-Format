@@ -17,17 +17,17 @@
 #include "headers/png.h"
 #pragma pack(1)
 
-int main(int argc, const char* argv[])
+#define ERROR 1
+#define SUCCESS 0
+
+bool customPalette = false;
+bool dithering = false;
+bool grayscale = false;
+bool toBMP = true; // default conversion from BSDM to BMP
+bool toPNG = false;
+
+void parseFlags (int argc, const char ** argv)
 {
-	bool customPalette = false;
-	bool dithering = false;
-	bool grayscale = false;
-
-	if (argc < 3)
-	{
-		std::cout << "[!] Usage: ./bsdmConvert <in> <out> [--custom-palette] [--dithering] [--grayscale]" << std::endl;
-	}
-
 	for (int i = 3; i < argc; i++)
 	{
 		if (!strcmp(argv[i], "--custom-palette"))
@@ -43,97 +43,168 @@ int main(int argc, const char* argv[])
 		{
 			grayscale = true;
 		}
-
-	}
-
-	FILE* in = fopen(argv[1], "rb");
-	FILE* out = fopen(argv[2], "wb");
-
-	if (in == NULL)
+		if (!strcmp(argv[i], "--to-bmp"))
+		{
+			toBMP = true;
+		}
+		if (!strcmp(argv[i], "--to-png"))
+		{
+			toPNG = true;
+		}
+	}	
+}
+bool readMagic (FILE * in, const char ** argv, char * fileMagic)
+{
+	if (fread(fileMagic, 1, 4, in) != 4)
 	{
-		std::cout << "[!] Cannot open input file !" << std::endl;
-		return -2;
-	}
-	if (out == NULL)
-	{
-		std::cout << "[!] Cannot open output file !" << std::endl;
-		return -3;
-	}
-
-	uint8_t* rawBSDMBitmapData;
-
-	char magic[4];
-
-	if (fread(magic, 1, 4, in) != 4)
-	{
-		return -1;
+		return ERROR;
 	}
 	fseek(in, 0, 0); // set to begining 
+	return SUCCESS;
+}
+bool BMPtoBSDM (FILE * in, FILE * out)
+{
+	BITMAPFILEHEADER BMPfileHeaderIN;
+	BITMAPINFOHEADER BMPinfoHeaderIN;
 
-	if (!strncmp(magic, "BM", 2)) // BMP to BSDM
+	if (readBMPHeaders(in, BMPfileHeaderIN, BMPinfoHeaderIN))
 	{
-		BITMAPFILEHEADER BMPfileHeaderIN;
-		BITMAPINFOHEADER BMPinfoHeaderIN;
-
-		if (readBMPHeaders(in, BMPfileHeaderIN, BMPinfoHeaderIN))
-		{
-			return 1;
-		}
-		uint8_t* rawBMPBitmapData = readRawBMPData(in, BMPfileHeaderIN, BMPinfoHeaderIN);
-		convertSaveBSDM(out, BMPfileHeaderIN, BMPinfoHeaderIN, rawBMPBitmapData, grayscale, customPalette, dithering);
+		std::cout << "[!] Could not read BMP headers !" << std::endl;
+		return ERROR;
 	}
-	else if (!strncmp(magic,"\x89\x50\x4e\x47",4)) // PNG file to BSDM
+	uint8_t* rawBMPBitmapData = readRawBMPData(in, BMPfileHeaderIN, BMPinfoHeaderIN);
+
+	inputFormatDataStruct bitmapINFO;
+	bitmapINFO.width = BMPinfoHeaderIN.biWidth;
+	bitmapINFO.height = BMPinfoHeaderIN.biHeight;
+	bitmapINFO.dataSize = BMPfileHeaderIN.bfSize;
+	convertSaveToBSDM(out, bitmapINFO ,rawBMPBitmapData, grayscale, customPalette, dithering);
+	return SUCCESS;
+}
+bool PNGtoBSDM (FILE * in, FILE * out)
+{
+	png_structp png_ptr;
+	png_infop info_ptr;
+	fseek(in, 0L, SEEK_END);
+	uint32_t size = ftell(in);
+	fseek(in, 0L, 0);
+	uint8_t * rawBitmapData = readPngFile (in,png_ptr,info_ptr);
+
+  	png_byte color_type = png_get_color_type(png_ptr, info_ptr);
+
+  	if (color_type != PNG_COLOR_TYPE_RGB)
+   	{
+   		std::cout << "[!] RGB only supported in PNG, that's probably RGBA or grayscale" << std::endl;
+   		return ERROR;
+   	}
+  	
+	inputFormatDataStruct bitmapINFO;
+	bitmapINFO.width = png_get_image_width(png_ptr, info_ptr);
+	bitmapINFO.height = png_get_image_height(png_ptr, info_ptr);
+	bitmapINFO.dataSize = size;
+
+	convertSaveToBSDM(out, bitmapINFO, rawBitmapData, grayscale, customPalette, dithering);
+	return SUCCESS;
+}
+uint8_t * decompressLZWData (FILE * in, BSDMHEADER & bsdmHeader)
+{
+	std::list<int> compressed = ReadCompressedData(in, bsdmHeader);
+	std::string decompressed = lzw_decompress(compressed);
+	uint8_t* rawBSDMBitmapData = new uint8_t[bsdmHeader.width * bsdmHeader.height];
+	rawBSDMBitmapData = ConvertStringtoBDSMrawData(decompressed, bsdmHeader.width * bsdmHeader.height);
+	return rawBSDMBitmapData;
+}
+bool BSDMtoOtherFormat (FILE * in, FILE * out, FILE_TYPE format)
+{
+	BSDMHEADER BSDMheaderIN;
+
+	if (readBSDMHeader(in, BSDMheaderIN))
 	{
-		BITMAPFILEHEADER BMPfileHeaderIN; // TODO
-		BITMAPINFOHEADER BMPinfoHeaderIN;
-		memset (&BMPfileHeaderIN,0,sizeof(BITMAPFILEHEADER));
-		memset (&BMPinfoHeaderIN,0,sizeof(BITMAPINFOHEADER));
-
-		png_structp png_ptr;
-		png_infop info_ptr;
-		uint8_t * rawBitmapData = readPngFile (in,png_ptr,info_ptr);
-
-    	png_byte color_type = png_get_color_type(png_ptr, info_ptr);
-
-    	if (color_type != PNG_COLOR_TYPE_RGB)
-    	{
-    		std::cout << "[!] RGB only supported in RGB" << std::endl;
-    		return -1;
-    	}
-		BMPinfoHeaderIN.biWidth = png_get_image_width(png_ptr, info_ptr);
-		BMPinfoHeaderIN.biHeight = png_get_image_height(png_ptr, info_ptr);
-
-		convertSaveBSDM(out, BMPfileHeaderIN, BMPinfoHeaderIN, rawBitmapData, grayscale, customPalette, dithering);
+		std::cout << "[!] Could not read BSDM header !" << std::endl;
+		return ERROR;
 	}
-	else if (!strncmp(magic, "BSDM", 4)) // BSDM to BMP, 24 bit RGB Windows bitmap
+	if (BSDMheaderIN.isCustomPalette)
 	{
-		BSDMHEADER BSDMheaderIN;
+		BSDM_PALETTE palette;
+		readBSDMPalette(in, palette);
+		convertSaveFromBSDMPalette(in, out, palette, BSDMheaderIN,format);
+	}
+	else
+	{
+		uint8_t * rawBSDMBitmapData = decompressLZWData(in,BSDMheaderIN);
+		convertSaveFromBSDM(out, rawBSDMBitmapData, BSDMheaderIN,format);
+	}
+	return SUCCESS;
+}
 
-		if (readBSDMHeader(in, BSDMheaderIN))
+bool performConversions (FILE * in, FILE * out, const char * fileMagic)
+{
+	if (!strncmp(fileMagic, "BM", 2)) // BMP to BSDM
+	{
+		uint32_t status = BMPtoBSDM(in,out);
+		return status;
+	}
+	else if (!strncmp(fileMagic,"\x89\x50\x4e\x47",4)) // PNG file to BSDM
+	{
+		uint32_t status = PNGtoBSDM (in,out);
+		return status;
+	}
+	else if (!strncmp(fileMagic, "BSDM", 4)) // BSDM to BMP or PNG, 24 bit
+	{
+		uint32_t status = SUCCESS; 
+		if (toBMP)
 		{
-			return 1;
+			status = BSDMtoOtherFormat(in,out,FORMAT_BMP);  // to BMP
 		}
-
-		if (BSDMheaderIN.isCustomPalette)
+		else if (toPNG)
 		{
-			BSDM_PALETTE palette;
-			readBSDMPalette(in, palette);
-			convertSaveBMPPalette(in, out, palette, BSDMheaderIN);
+			status = BSDMtoOtherFormat(in,out,FORMAT_PNG);  // to PNG
 		}
-		else
-		{
-			BSDM_PALETTE null;
-			std::list<int> compressed = ReadCompressedData(in, BSDMheaderIN, null);
-			std::string decompressed = lzw_decompress(compressed);
-			uint8_t* rawBSDMBitmapData = new uint8_t[BSDMheaderIN.width * BSDMheaderIN.height];
-
-			rawBSDMBitmapData = ConvertStringtoBDSMrawData(decompressed, BSDMheaderIN.width * BSDMheaderIN.height);
-			convertSaveBMP(out, rawBSDMBitmapData, BSDMheaderIN, dithering);
-		}
+		return status;
 	}
 	else
 	{
 		std::cout << "[!] Unknown file format !" << std::endl;
+		return ERROR;
+	}
+}
+
+int main(int argc, const char* argv[])
+{
+	char fileMagic[4];
+	FILE * in = fopen(argv[1], "rb");
+	FILE * out = fopen(argv[2], "wb");
+
+	if (argc < 3)
+	{
+		std::cout << "[!] Usage: ./bsdmConvert <in> <out> <--to-bmp>/<--to-png> [--custom-palette] [--dithering] [--grayscale]" << std::endl;
+		return 1;
+	}
+
+	parseFlags (argc, argv);
+
+	if (in == NULL)
+	{
+		std::cout << "[!] Cannot open input file !" << std::endl;
+		return ERROR;
+	}
+	if (out == NULL)
+	{
+		std::cout << "[!] Cannot open output file !" << std::endl;
+		return ERROR;
+	}
+
+	uint32_t status = readMagic(in,argv,fileMagic);
+
+	if (status == ERROR)
+	{
+		return 2;
+	}
+
+	status = performConversions (in,out,fileMagic);
+	if (status == ERROR)
+	{
+		return 3;
 	}
 
 	fclose(in);

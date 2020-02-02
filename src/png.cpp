@@ -69,10 +69,15 @@ uint8_t * readPngFile(FILE * fp, png_structp & png_ptr, png_infop & info_ptr)
     return data;
 }
 
-/*
-void writePngFile(FILE * fp)
+void writePngFile(FILE * fOUT, uint8_t * data, const BSDMHEADER & info)
 {
-
+    png_bytep * row_pointers = (png_bytep*) malloc(sizeof(png_bytep) * info.height);
+    for (uint32_t y = 0; y < info.height; y++)
+    {
+         row_pointers[y] = &data[y * info.width * 3];
+    }
+    png_structp png_ptr;
+    png_infop info_ptr;
     png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 
     if (!png_ptr)
@@ -91,17 +96,15 @@ void writePngFile(FILE * fp)
         printf("[write_png_file] Error during init_io");
     }
 
-    png_init_io(png_ptr, fp);
-
-
+    png_init_io(png_ptr, fOUT);
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         printf("[write_png_file] Error during writing header");
     }
 
-    png_set_IHDR(png_ptr, info_ptr, width, height,
-                  bit_depth, color_type, PNG_INTERLACE_NONE,
+    png_set_IHDR(png_ptr, info_ptr, info.width, info.height,
+                  24, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
                   PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
 
     png_write_info(png_ptr, info_ptr);
@@ -113,8 +116,6 @@ void writePngFile(FILE * fp)
 
     png_write_image(png_ptr, row_pointers);
 
-
-
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         printf("[write_png_file] Error during end of write");
@@ -122,17 +123,12 @@ void writePngFile(FILE * fp)
 
     png_write_end(png_ptr, NULL);
 
-    for (y=0; y<height; y++)
-    {
-        free(row_pointers[y]);
-    }
-
     free(row_pointers);
-    fclose(fp);
+    fclose(fOUT);
 
 }
 
-
+/*
 void processFile()
 {
         if (png_get_color_type(png_ptr, info_ptr) == PNG_COLOR_TYPE_RGB)
@@ -160,4 +156,5 @@ void processFile()
             }
         }
 }
+
 */

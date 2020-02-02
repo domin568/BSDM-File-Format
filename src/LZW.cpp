@@ -116,7 +116,7 @@ uint8_t* ConvertStringtoBDSMrawData(std::string decompressed, int BSDMDataSize)
 	return rawBSDMData;
 }
 
-std::list<int> ReadCompressedData(FILE* bsdmFile, const BSDMHEADER& header, BSDM_PALETTE& palette)
+std::list<int> ReadCompressedData(FILE* bsdmFile, const BSDMHEADER& header)
 {
 	fseek(bsdmFile, 0, SEEK_END);
 	int dataSize = (int)ftell(bsdmFile) - 20;

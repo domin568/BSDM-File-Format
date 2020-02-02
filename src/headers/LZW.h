@@ -3,7 +3,7 @@
 
 #include <list>
 #include <math.h>
-#include "BSDMHeader.h"
+#include "FileStructs.h"
 #include "Color.h"
 #pragma pack(1)
 std::list<int> lzw_compression(uint8_t* rawBSDMData, int BSDMDataSize);
@@ -15,5 +15,5 @@ uint8_t MinNumBits(std::list<int> rsrc);
 uint8_t* ConvertStringtoBDSMrawData(std::string decompressed, int BSDMDataSize);
 
 
-std::list<int> ReadCompressedData(FILE* bsdmFile, const BSDMHEADER& header, BSDM_PALETTE& palette);
+std::list<int> ReadCompressedData(FILE* bsdmFile, const BSDMHEADER& header);
 #endif // ! LZW_H
